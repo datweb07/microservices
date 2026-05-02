@@ -38,3 +38,61 @@ Kiến trúc này chia nhỏ ứng dụng thành các dịch vụ độc lập v
 3. **Quản lý dữ liệu độc lập:** Mỗi Microservice phải sở hữu và tự quản lý một cơ sở dữ liệu riêng của nó. Nếu nhiều service vẫn gọi chung vào một database trung tâm thì đó không phải là Microservices.
 
 *Lưu ý:* Việc phá vỡ các quy tắc đồng nghĩa với việc đánh mất lợi ích của Microservices. Bản thân mỗi một service nhỏ trong Microservices khi hoạt động có thể xem như một ứng dụng Monolithic, và khi các service gọi cho nhau, đó chính là mô hình Client-Server. Để xây dựng được các kiến trúc phức tạp như Microservices hay N-Tier tốt, thì điều tiên quyết là đội ngũ phải có khả năng xây dựng tốt một kiến trúc Monolithic trước tiên.
+
+---
+
+# Saga Pattern: Giải Pháp Xử Lý Giao Dịch Phân Tán Trong Microservices
+
+### 1. Tổng quan về Saga Pattern
+**Saga Pattern** là một mẫu thiết kế (design pattern) quan trọng trong kiến trúc microservices. Nó được sử dụng để quản lý các giao dịch phân tán (distributed transactions) khi mỗi microservice sở hữu một cơ sở dữ liệu (DB) riêng biệt.
+
+Vì các giao dịch (transaction) truyền thống thường chỉ hoạt động trong phạm vi một hệ quản trị cơ sở dữ liệu duy nhất, Saga pattern giúp đồng bộ hóa các thao tác cập nhật dữ liệu trên nhiều service mà không cần dựa vào các giao dịch phân tán phức tạp (như 2PC - Two-Phase Commit).
+
+### 2. Khái niệm cốt lõi
+- **Microservice và DB riêng biệt:** Mỗi service quản lý dữ liệu riêng (SQL hoặc NoSQL như MongoDB, Redis). Các hệ thống NoSQL thường không hỗ trợ giao dịch đa tài liệu (multi-document transactions) hoặc giao dịch phân tán.
+- **Thách thức về tính toàn vẹn:** Trong một hệ thống du lịch (Đặt xe -> Đặt phòng -> Đặt vé -> Thanh toán), nếu một bước thất bại, hệ thống phải có cơ chế tự động hoàn tác (**rollback**) các bước trước đó để tránh sai lệch dữ liệu.
+- **Local Transactions:** Saga chia một giao dịch lớn thành một chuỗi các giao dịch cục bộ (local transactions). Mỗi service thực hiện phần việc của mình và phát ra sự kiện (event) để kích hoạt bước tiếp theo.
+
+### 3. Hai mô hình triển khai Saga Pattern
+
+| Loại Saga | Đặc điểm chính | Ưu điểm / Nhược điểm |
+| :--- | :--- | :--- |
+| **Choreography (Điều phối phân tán)** | Các service giao tiếp qua sự kiện (events). Mỗi service hoàn thành việc sẽ phát event, service tiếp theo lắng nghe và thực hiện. | **Ưu:** Không cần bộ điều phối trung tâm.<br>**Nhược:** Khó theo dõi luồng (workflow) khi hệ thống trở nên phức tạp. |
+| **Orchestration (Điều phối tập trung)** | Sử dụng một đối tượng trung tâm (**Orchestrator**) để chỉ đạo. Orchestrator gọi từng service và quyết định bước tiếp theo hoặc lệnh rollback. | **Ưu:** Dễ kiểm soát và quản lý luồng thực thi.<br>**Nhược:** Rủi ro "điểm chết duy nhất" (Single Point of Failure) tại Orchestrator. |
+
+### 4. Các nguyên tắc và thách thức kỹ thuật
+- **Giao dịch bù (Compensating Transaction):** Trong Saga, khi một bước đã "Commit" vào DB thì không thể rollback tự động kiểu truyền thống. Do đó, mỗi thao tác phải có một hành động ngược lại (Undo). Ví dụ: Thao tác "Đặt phòng" phải có thao tác "Hủy phòng" tương ứng.
+- **Đánh đổi giữa Availability và Consistency:** Theo định lý CAP, hệ thống càng ưu tiên tính sẵn sàng (Availability) thì tính nhất quán dữ liệu tức thời (Strong Consistency) sẽ giảm đi. Saga hướng tới tính nhất quán sau cùng (**Eventual Consistency**).
+- **Thiếu tính cô lập (Lack of Isolation):** Dữ liệu của một giao dịch cục bộ sẽ hiển thị ngay lập tức với các service khác dù toàn bộ chuỗi Saga chưa kết thúc.
+    * *Giải pháp:* Sử dụng các trạng thái tạm thời như `Pending`, `Processing` hoặc cơ chế khóa thủ công (Semantic Locking).
+
+### 5. Ví dụ minh họa: Quy trình đặt tour du lịch
+Giả sử một khách hàng đặt một gói du lịch, quy trình sẽ diễn ra như sau:
+
+| Bước | Microservice thực hiện | Hành động thực tế | Event phát ra |
+| :--- | :--- | :--- | :--- |
+| 1 | **Order Service** | Tạo đơn hàng mới ($OrderID$) | `OrderCreated` |
+| 2 | **Car Rental Service** | Giữ xe cho khách | `CarReserved` |
+| 3 | **Hotel Service** | Đặt phòng khách sạn | `HotelBooked` |
+| 4 | **Flight Service** | Giữ chỗ vé máy bay | `FlightBooked` |
+| 5 | **Payment Service** | Thực hiện thanh toán | `PaymentSuccess` hoặc `PaymentFailed` |
+
+**Kịch bản thất bại:** Nếu bước 5 (Thanh toán) thất bại, Orchestrator (hoặc thông qua Event) sẽ yêu cầu Flight, Hotel và Car Rental thực hiện lệnh **Undo** để giải phóng tài nguyên.
+
+### 6. Lời khuyên khi áp dụng
+Việc triển khai Saga không hề đơn giản và đòi hỏi sự đầu tư nghiêm túc:
+1.  **Đừng nôn nóng:** Đây là một kỹ thuật nâng cao. Bạn có thể mất vài tháng đến hàng năm để thực sự làm chủ các biến thể của nó.
+2.  **Tập trung vào thực hành:** Lý thuyết chỉ là nền tảng, việc áp dụng vào các dự án thực tế mới giúp bạn hiểu rõ các vấn đề về độ trễ, lỗi mạng và trùng lặp event.
+3.  **Luôn đặt câu hỏi:** Trước khi áp dụng, hãy tự hỏi: "Hệ thống có thực sự cần phân tán đến mức này không?" vì Saga làm tăng độ phức tạp của mã nguồn và việc debug.
+
+### 7. Danh mục thuật ngữ quan trọng
+
+| Thuật ngữ | Ý nghĩa |
+| :--- | :--- |
+| **Local Transaction** | Giao dịch cục bộ bên trong một service duy nhất. |
+| **Compensating Transaction** | Giao dịch bù (thao tác ngược) dùng để hoàn tác dữ liệu. |
+| **Eventual Consistency** | Tính nhất quán sau cùng (dữ liệu sẽ đồng nhất sau một khoảng thời gian). |
+| **Orchestrator** | Bộ điều phối trung tâm trong mô hình Orchestration. |
+| **Semantic Lock** | Khóa ngữ nghĩa (sử dụng trạng thái để ngăn chặn các thay đổi không hợp lệ). |
+
+*Tóm lại, Saga pattern là "chìa khóa" để giải quyết bài toán giao dịch trong Microservices, nhưng nó yêu cầu tư duy thiết kế cẩn trọng về cả trường hợp thành công lẫn thất bại.*
