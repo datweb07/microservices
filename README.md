@@ -96,3 +96,41 @@ Việc triển khai Saga không hề đơn giản và đòi hỏi sự đầu t�
 | **Semantic Lock** | Khóa ngữ nghĩa (sử dụng trạng thái để ngăn chặn các thay đổi không hợp lệ). |
 
 *Tóm lại, Saga pattern là "chìa khóa" để giải quyết bài toán giao dịch trong Microservices, nhưng nó yêu cầu tư duy thiết kế cẩn trọng về cả trường hợp thành công lẫn thất bại.*
+
+---
+
+# Microservices Và Twelve-Factor
+
+Nội dung này trình bày về **12 nguyên tắc phát triển ứng dụng Cloud** theo phương pháp **Twelve-Factor App**, đặc biệt khi áp dụng vào kiến trúc Microservices. Tập trung giải thích 8 nguyên tắc đầu tiên (trong tổng số 12) cùng 3 nguyên tắc mở rộng được gọi là **12 Plus**.
+
+### 1. Tổng quan về Twelve-Factor App trong môi trường Cloud
+
+- **Twelve-Factor App** là tập hợp 12 quy tắc cốt lõi giúp thiết kế các ứng dụng Cloud (đám mây) linh hoạt, bền bỉ, có khả năng chịu đựng các ràng buộc về mạng, chi phí và môi trường thực thi.
+- **Đặc thù của môi trường Cloud:** Thường có độ trễ mạng cao hơn, băng thông bị giới hạn và phát sinh chi phí khi truyền dữ liệu giữa các khu vực (regions/zones).
+- **Mối liên hệ với Microservices:** Microservices có thể được xem là một dạng ứng dụng Cloud tiêu chuẩn, vì hầu hết các dịch vụ này đều chạy trên nền tảng đám mây để phục vụ người dùng từ xa (không phải local). Trong kiến trúc này, mỗi một microservice sẽ đóng vai trò tương đương như một ứng dụng (app) độc lập và cần tuân thủ các nguyên tắc Twelve-Factor.
+
+### 2. Tóm tắt 8 nguyên tắc đầu tiên của Twelve-Factor App
+
+| Nguyên tắc | Mô tả chính |
+| :--- | :--- |
+| **1. Codebase** (Cơ sở mã nguồn) | Mỗi microservice phải có một **codebase duy nhất**, được quản lý bằng hệ thống kiểm soát phiên bản (Version Control - ví dụ: Git). |
+| **2. Dependencies** (Sự phụ thuộc) | Mỗi app phải tự khai báo và đóng gói các thư viện (dependencies) một cách rõ ràng, độc lập để tránh xung đột phiên bản giữa các app. |
+| **3. Configuration** (Cấu hình) | Cấu hình ứng dụng phải được lưu trữ **tách biệt hoàn toàn khỏi code**, thường sử dụng các biến môi trường (Environment Variables) hoặc dịch vụ quản lý cấu hình. |
+| **4. Backing Services** (Dịch vụ hỗ trợ) | Các dịch vụ bên ngoài (Database, Message Queue, Cache) phải được coi là tài nguyên gắn kèm (attached resources) và truy cập thông qua mạng. |
+| **5. Build, Release, Run** (Xây dựng, Phát hành, Chạy) | Quá trình triển khai phải tách biệt rõ ràng ba giai đoạn: Build (biên dịch code), Release (kết hợp code đã build với cấu hình), và Run (chạy ứng dụng). |
+| **6. Processes** (Tiến trình) | Mỗi microservice chạy dưới dạng một hoặc nhiều **tiến trình phi trạng thái (stateless)**. Mọi trạng thái cần lưu trữ phải được đẩy ra một dịch vụ hỗ trợ (ví dụ: Database, Redis). |
+| **7. Port Binding** (Gắn kết cổng) | Microservice tự cung cấp dịch vụ của nó bằng cách lắng nghe trên một cổng (port) cụ thể và ánh xạ ra bên ngoài. |
+| **8. Concurrency** (Đồng thời) | Ứng dụng phải hỗ trợ mở rộng theo chiều ngang (Horizontal Scaling) bằng cách thêm nhiều phiên bản (instances) thay vì phụ thuộc vào việc nâng cấp cấu hình phần cứng (Vertical Scaling). |
+
+### 3. Các điểm nhấn quan trọng cần lưu ý
+
+- **Quản lý codebase và dependencies độc lập** giúp các nhóm lập trình làm việc song song mà không dẫm chân lên nhau hay gây xung đột mã nguồn/thư viện.
+- **Tách cấu hình khỏi code** giúp bạn dễ dàng thay đổi cấu hình cho từng môi trường (Dev, Test, Prod) mà không cần phải build lại mã nguồn.
+- **Tách rời Backing Services** giúp giảm sự phụ thuộc cứng. Khi cần thiết, bạn có thể dễ dàng thay đổi hoặc mở rộng Database/Cache mà không ảnh hưởng đến code của Microservice.
+- **Quy trình Build-Release-Run một chiều** không cho phép chỉnh sửa code trực tiếp trên môi trường Run (không hỗ trợ undo release), nhưng lại hỗ trợ an toàn việc rollback (quay hệ thống về bản phát hành ổn định trước đó) khi xảy ra sự cố.
+- **Stateless Process (Tiến trình phi trạng thái)** là yếu tố sống còn để đảm bảo hệ thống có thể scale lên xuống linh hoạt mà không làm mất dữ liệu người dùng.
+
+### 4. Kết luận
+
+- **Twelve-Factor App** chính là bộ tiêu chuẩn vàng để thiết kế các ứng dụng Cloud Native hiện đại, và nó hoàn toàn khớp với triết lý của Microservices.
+- Việc tuân thủ nghiêm ngặt các nguyên tắc này giúp ứng dụng của bạn linh hoạt, dễ dàng mở rộng, tự động hóa khâu triển khai và giảm thiểu rủi ro bảo trì trên Cloud.
